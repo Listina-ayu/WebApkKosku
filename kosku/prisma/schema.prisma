@@ -1,0 +1,102 @@
+// Skema database KosKu (sesuai Bab 4.5 laporan).
+// Kolom "ENUM" di laporan ditulis
+// sebagai String (database.sql memakai ENUM); nilainya dijaga lewat lib/constants.js.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  password  String // hash bcrypt
+  phone     String?
+  role      String   @default("TENANT") // OWNER | TENANT
+  createdAt DateTime @default(now()) @map("created_at")
+
+  rentals Rental[]
+
+  @@map("users")
+}
+
+model Room {
+  id          Int     @id @default(autoincrement())
+  roomNumber  String  @unique @map("room_number")
+  type        String
+  price       Int // harga per bulan
+  size        String?
+  facilities  String  @default("") // satu fasilitas per baris
+  description String  @default("")
+  status      String  @default("AVAILABLE") // AVAILABLE | OCCUPIED (otomatis oleh sistem)
+  isActive    Boolean @default(true) @map("is_active")
+  imageUrl    String? @map("image_url")
+  galleryUrls String? @map("gallery_urls") // JSON: ["url foto 2","url foto 3","url foto 4"]
+
+  rentals Rental[]
+
+  @@map("rooms")
+}
+
+model Rental {
+  id             Int      @id @default(autoincrement())
+  userId         Int      @map("user_id")
+  roomId         Int      @map("room_id")
+  startDate      DateTime @map("start_date")
+  durationMonths Int      @map("duration_months")
+  endDate        DateTime @map("end_date") // dihitung otomatis
+  status         String   @default("PENDING") // PENDING | ACTIVE | REJECTED | ENDED
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user     User      @relation(fields: [userId], references: [id])
+  room     Room      @relation(fields: [roomId], references: [id])
+  invoices Invoice[]
+
+  @@map("rentals")
+}
+
+model Invoice {
+  id       Int      @id @default(autoincrement())
+  rentalId Int      @map("rental_id")
+  period   String // contoh: 2026-11
+  amount   Int
+  dueDate  DateTime @map("due_date")
+  status   String   @default("UNPAID") // UNPAID | WAITING_VERIFICATION | PAID
+
+  rental   Rental    @relation(fields: [rentalId], references: [id])
+  payments Payment[]
+
+  // satu sewa hanya boleh punya satu tagihan per periode
+  @@unique([rentalId, period])
+  @@map("invoices")
+}
+
+model Payment {
+  id        Int      @id @default(autoincrement())
+  invoiceId Int      @map("invoice_id")
+  proofUrl  String   @map("proof_url")
+  paidAt    DateTime @default(now()) @map("paid_at")
+  status    String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  note      String? // alasan penolakan
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@map("payments")
+}
+
+// File gambar (foto kamar & bukti transfer) disimpan langsung di database
+// agar aplikasi bisa dideploy ke hosting yang tidak punya disk permanen.
+model File {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  mime      String
+  data      Bytes
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("files")
+}
